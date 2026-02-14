@@ -3,23 +3,486 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Template Web MVP</title>
+  <title>Migration Tracker (MVP)</title>
   <style>
-    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;background:#0b0b0c;color:#e7e7ea}
-    .wrap{max-width:900px;margin:0 auto;padding:28px}
-    .card{background:#101012;border:1px solid #25252a;border-radius:14px;padding:18px}
-    a{color:#7aa2f7}
-    code{background:#141418;padding:2px 6px;border-radius:6px}
+    :root{
+      --bg:#0b0b0c;--panel:#101012;--panel2:#121217;--border:#25252a;--text:#e7e7ea;--muted:#a3a3ad;
+      --link:#7aa2f7;--ok:#3fb950;--warn:#d29922;--bad:#f85149;
+      --mono: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
+    }
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;background:var(--bg);color:var(--text)}
+    .wrap{max-width:1100px;margin:0 auto;padding:24px}
+    a{color:var(--link)}
+    .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+    .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:14px}
+    .card h2{margin:0 0 10px 0;font-size:16px}
+    .grow{flex:1}
+    input,select,textarea,button{background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:9px 10px;font:inherit}
+    input::placeholder, textarea::placeholder{color:#7d7d88}
+    textarea{min-height:60px;resize:vertical}
+    button{cursor:pointer}
+    button.primary{background:linear-gradient(180deg,#1b2a55,#172144);border-color:#2b3c7a}
+    button.danger{background:linear-gradient(180deg,#4a1c1c,#361515);border-color:#6a2a2a}
+    button:disabled{opacity:.55;cursor:not-allowed}
+    .pill{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border-radius:999px;border:1px solid var(--border);background:rgba(255,255,255,.02)}
+    .dot{width:10px;height:10px;border-radius:999px;background:var(--muted)}
+    .dot.ok{background:var(--ok)}
+    .dot.warn{background:var(--warn)}
+    .dot.bad{background:var(--bad)}
+    table{width:100%;border-collapse:separate;border-spacing:0}
+    th,td{padding:10px;border-bottom:1px solid var(--border);vertical-align:top}
+    th{position:sticky;top:0;background:rgba(16,16,18,.95);backdrop-filter: blur(6px);text-align:left;font-size:12px;color:var(--muted)}
+    td input, td select, td textarea{width:100%;box-sizing:border-box}
+    td.actions{white-space:nowrap}
+    .small{font-size:12px;color:var(--muted)}
+    .kbd{font-family:var(--mono);font-size:12px;background:#141418;border:1px solid var(--border);padding:2px 6px;border-radius:7px}
+    .footer{margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .sep{height:1px;background:var(--border);margin:12px 0}
+    .audit{font-family:var(--mono);font-size:12px;white-space:pre-wrap;max-height:240px;overflow:auto;background:#0f0f12;border:1px solid var(--border);padding:10px;border-radius:12px}
   </style>
 </head>
 <body>
   <div class="wrap">
-    <h1>Web MVP Template</h1>
-    <p>This repo is a minimal static site + GitHub Pages Actions workflow.</p>
-    <div class="card">
-      <p>Edit <code>index.html</code> and push to <code>main</code>. Pages will redeploy automatically.</p>
-      <p>Next: replace this with your MVP UI (forms, results, etc.).</p>
+    <h1 style="margin:0 0 6px 0">Migration Tracker</h1>
+    <p class="small" style="margin:0 0 18px 0">
+      Dead-simple tracker for cross-team transformations (repo migrations, cloud moves, platform rollouts) with
+      <b>dropdown statuses</b> + <b>audit trail</b> + <b>CSV import/export</b>. 100% local (data stays in your browser).
+    </p>
+
+    <div class="row">
+      <div class="card grow">
+        <h2>Project</h2>
+        <div class="row">
+          <label class="pill">Type
+            <select id="projectType">
+              <option value="repo">Bitbucket → GitHub migration</option>
+              <option value="cloud">AWS account migration</option>
+              <option value="platform">Platform rollout</option>
+              <option value="custom">Custom</option>
+            </select>
+          </label>
+          <label class="pill">Your name
+            <input id="actor" placeholder="e.g. Tincho" style="min-width:180px" />
+          </label>
+          <span class="pill" id="statsPill" title="Counts by status">
+            <span class="dot" id="statsDot"></span>
+            <span id="statsText">0 items</span>
+          </span>
+        </div>
+        <div class="footer">
+          <button class="primary" id="addRow">+ Add item</button>
+          <button id="exportCsv">Export CSV</button>
+          <button id="exportJson">Export JSON</button>
+          <label class="pill" style="cursor:pointer">
+            Import CSV
+            <input id="importCsv" type="file" accept=".csv,text/csv" style="display:none" />
+          </label>
+          <label class="pill" style="cursor:pointer">
+            Import JSON
+            <input id="importJson" type="file" accept="application/json,.json" style="display:none" />
+          </label>
+          <button class="danger" id="reset">Reset</button>
+          <span class="small">Tip: use <span class="kbd">Ctrl</span>+<span class="kbd">F</span> to find an app.</span>
+        </div>
+      </div>
     </div>
+
+    <div class="sep"></div>
+
+    <div class="card">
+      <h2>Tracker</h2>
+      <div class="small" style="margin-bottom:10px">Each edit is appended to the audit log (field-level).</div>
+      <div style="overflow:auto;border:1px solid var(--border);border-radius:14px">
+        <table data-testid="grid" id="grid">
+          <thead>
+            <tr>
+              <th style="min-width:220px">Item</th>
+              <th style="min-width:160px">Owner</th>
+              <th style="min-width:170px">Status</th>
+              <th style="min-width:220px">Blocker</th>
+              <th style="min-width:260px">Notes</th>
+              <th style="min-width:90px">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="sep"></div>
+
+    <div class="card">
+      <h2>Audit log</h2>
+      <div class="small" style="margin-bottom:10px">Copy/paste into Slack/Email when leadership asks “what changed?”</div>
+      <div class="audit" id="audit"></div>
+    </div>
+
+    <p class="small" style="margin-top:16px">
+      Built as a response to this pain post: 
+      <a href="https://www.reddit.com/r/ProductManagement/comments/1r3b7gr/how_do_you_track_status_for_massive_crossteam/" target="_blank" rel="noreferrer">"How do you track status for massive cross-team projects?"</a>
+    </p>
   </div>
+
+<script>
+  const STORAGE_KEY = 'migration-tracker:v1';
+
+  const STATUS_SETS = {
+    repo: [
+      {v:'Not started', c:'bad'},
+      {v:'In progress', c:'warn'},
+      {v:'Blocked', c:'bad'},
+      {v:'Waiting on owner', c:'warn'},
+      {v:'Ready for cutover', c:'warn'},
+      {v:'Done', c:'ok'}
+    ],
+    cloud: [
+      {v:'Not started', c:'bad'},
+      {v:'Discovery', c:'warn'},
+      {v:'In progress', c:'warn'},
+      {v:'Blocked', c:'bad'},
+      {v:'Validation', c:'warn'},
+      {v:'Cutover scheduled', c:'warn'},
+      {v:'Done', c:'ok'}
+    ],
+    platform: [
+      {v:'Not started', c:'bad'},
+      {v:'Designing', c:'warn'},
+      {v:'Building', c:'warn'},
+      {v:'Pilot', c:'warn'},
+      {v:'Blocked', c:'bad'},
+      {v:'Rolled out', c:'ok'}
+    ],
+    custom: [
+      {v:'Not started', c:'bad'},
+      {v:'In progress', c:'warn'},
+      {v:'Blocked', c:'bad'},
+      {v:'Done', c:'ok'}
+    ]
+  };
+
+  const el = (id) => document.getElementById(id);
+  const projectType = el('projectType');
+  const actor = el('actor');
+  const tbody = el('tbody');
+  const audit = el('audit');
+  const statsText = el('statsText');
+  const statsDot = el('statsDot');
+
+  function nowIso(){
+    const d = new Date();
+    return d.toISOString().replace('T',' ').replace('Z',' UTC');
+  }
+
+  function uid(){
+    return Math.random().toString(36).slice(2,10) + '-' + Date.now().toString(36);
+  }
+
+  function load(){
+    try{
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return { meta: { type: 'repo', actor: '' }, rows: [], audit: [] };
+      const obj = JSON.parse(raw);
+      if (!obj?.meta || !Array.isArray(obj?.rows)) throw new Error('bad shape');
+      return obj;
+    }catch{
+      return { meta: { type: 'repo', actor: '' }, rows: [], audit: [] };
+    }
+  }
+
+  function save(state){
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }
+
+  let state = load();
+  projectType.value = state.meta.type || 'repo';
+  actor.value = state.meta.actor || '';
+
+  function statusOptions(type){
+    return STATUS_SETS[type] || STATUS_SETS.custom;
+  }
+
+  function statusColor(type, status){
+    const opt = statusOptions(type).find(o => o.v === status);
+    return opt?.c || 'warn';
+  }
+
+  function appendAudit(entry){
+    state.audit.unshift(entry);
+    state.audit = state.audit.slice(0, 300);
+  }
+
+  function renderAudit(){
+    if (!state.audit.length) {
+      audit.textContent = '(No changes yet)';
+      return;
+    }
+    audit.textContent = state.audit.map(e => {
+      const a = e.actor || 'someone';
+      return `[${e.ts}] ${a}: ${e.item} → ${e.field}: "${e.from}" → "${e.to}"`;
+    }).join('\n');
+  }
+
+  function renderStats(){
+    const total = state.rows.length;
+    const done = state.rows.filter(r => r.status === 'Done' || r.status === 'Rolled out').length;
+    const blocked = state.rows.filter(r => r.status === 'Blocked').length;
+    const pct = total ? Math.round(done * 100 / total) : 0;
+    statsText.textContent = `${total} items · ${pct}% done · ${blocked} blocked`;
+
+    statsDot.className = 'dot ' + (blocked ? 'bad' : (pct === 100 ? 'ok' : 'warn'));
+  }
+
+  function render(){
+    // keep meta synced
+    state.meta.type = projectType.value;
+    state.meta.actor = actor.value;
+
+    tbody.innerHTML = '';
+    const type = projectType.value;
+    const opts = statusOptions(type);
+
+    for (const row of state.rows){
+      const tr = document.createElement('tr');
+
+      const tdItem = document.createElement('td');
+      const inItem = document.createElement('input');
+      inItem.value = row.item || '';
+      inItem.placeholder = 'e.g. payments-service';
+      inItem.addEventListener('change', () => updateRow(row.id, 'item', inItem.value));
+      tdItem.appendChild(inItem);
+
+      const tdOwner = document.createElement('td');
+      const inOwner = document.createElement('input');
+      inOwner.value = row.owner || '';
+      inOwner.placeholder = 'e.g. @alice';
+      inOwner.addEventListener('change', () => updateRow(row.id, 'owner', inOwner.value));
+      tdOwner.appendChild(inOwner);
+
+      const tdStatus = document.createElement('td');
+      const sel = document.createElement('select');
+      for (const o of opts){
+        const opt = document.createElement('option');
+        opt.value = o.v;
+        opt.textContent = o.v;
+        sel.appendChild(opt);
+      }
+      sel.value = row.status || opts[0].v;
+      sel.addEventListener('change', () => updateRow(row.id, 'status', sel.value));
+      tdStatus.appendChild(sel);
+      const color = statusColor(type, sel.value);
+      tdStatus.appendChild(document.createElement('div')).outerHTML = `<div class="small" style="margin-top:6px"><span class="dot ${color}" style="display:inline-block;vertical-align:middle;margin-right:6px"></span>${color.toUpperCase()}</div>`;
+
+      const tdBlocker = document.createElement('td');
+      const inBlocker = document.createElement('input');
+      inBlocker.value = row.blocker || '';
+      inBlocker.placeholder = 'e.g. waiting for IAM approvals';
+      inBlocker.addEventListener('change', () => updateRow(row.id, 'blocker', inBlocker.value));
+      tdBlocker.appendChild(inBlocker);
+
+      const tdNotes = document.createElement('td');
+      const inNotes = document.createElement('textarea');
+      inNotes.value = row.notes || '';
+      inNotes.placeholder = 'Any context / links / next steps';
+      inNotes.addEventListener('change', () => updateRow(row.id, 'notes', inNotes.value));
+      tdNotes.appendChild(inNotes);
+
+      const tdActions = document.createElement('td');
+      tdActions.className = 'actions';
+      const del = document.createElement('button');
+      del.textContent = 'Delete';
+      del.className = 'danger';
+      del.addEventListener('click', () => deleteRow(row.id));
+      tdActions.appendChild(del);
+
+      tr.appendChild(tdItem);
+      tr.appendChild(tdOwner);
+      tr.appendChild(tdStatus);
+      tr.appendChild(tdBlocker);
+      tr.appendChild(tdNotes);
+      tr.appendChild(tdActions);
+
+      tbody.appendChild(tr);
+    }
+
+    renderAudit();
+    renderStats();
+    save(state);
+  }
+
+  function updateRow(id, field, value){
+    const r = state.rows.find(x => x.id === id);
+    if (!r) return;
+    const from = (r[field] ?? '').toString();
+    const to = (value ?? '').toString();
+    if (from === to) return;
+
+    r[field] = value;
+
+    appendAudit({
+      ts: nowIso(),
+      actor: (actor.value || '').trim(),
+      item: (r.item || '(untitled)').toString(),
+      field,
+      from,
+      to
+    });
+
+    render();
+  }
+
+  function deleteRow(id){
+    const idx = state.rows.findIndex(x => x.id === id);
+    if (idx === -1) return;
+    const r = state.rows[idx];
+    state.rows.splice(idx, 1);
+    appendAudit({ ts: nowIso(), actor: (actor.value||'').trim(), item: (r.item||'(untitled)'), field: 'delete', from: 'row', to: 'deleted' });
+    render();
+  }
+
+  function addRow(prefill={}){
+    const type = projectType.value;
+    const opts = statusOptions(type);
+    state.rows.unshift({
+      id: uid(),
+      item: prefill.item || '',
+      owner: prefill.owner || '',
+      status: prefill.status || opts[0].v,
+      blocker: prefill.blocker || '',
+      notes: prefill.notes || ''
+    });
+    appendAudit({ ts: nowIso(), actor: (actor.value||'').trim(), item: (prefill.item||'(new item)'), field: 'create', from: '', to: '' });
+    render();
+  }
+
+  function download(filename, text, mime){
+    const blob = new Blob([text], {type: mime || 'text/plain'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+
+  function rowsToCsv(rows){
+    const cols = ['item','owner','status','blocker','notes'];
+    const esc = (s) => {
+      const v = (s ?? '').toString();
+      if (/[\n\r,\"]/g.test(v)) return '"' + v.replaceAll('"','""') + '"';
+      return v;
+    };
+    const header = cols.join(',');
+    const lines = rows.map(r => cols.map(c => esc(r[c])).join(','));
+    return [header, ...lines].join('\n');
+  }
+
+  function csvToRows(csv){
+    // minimal CSV parser supporting quotes
+    const lines = csv.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n').filter(Boolean);
+    if (!lines.length) return [];
+    const cols = parseCsvLine(lines[0]);
+    const out = [];
+    for (let i=1;i<lines.length;i++){
+      const vals = parseCsvLine(lines[i]);
+      const obj = {};
+      cols.forEach((c, idx) => obj[c] = vals[idx] ?? '');
+      out.push({
+        id: uid(),
+        item: obj.item ?? obj.Item ?? '',
+        owner: obj.owner ?? obj.Owner ?? '',
+        status: obj.status ?? obj.Status ?? 'Not started',
+        blocker: obj.blocker ?? obj.Blocker ?? '',
+        notes: obj.notes ?? obj.Notes ?? ''
+      });
+    }
+    return out;
+  }
+
+  function parseCsvLine(line){
+    const out = [];
+    let cur = '';
+    let inQ = false;
+    for (let i=0;i<line.length;i++){
+      const ch = line[i];
+      if (inQ){
+        if (ch === '"' && line[i+1] === '"') { cur += '"'; i++; continue; }
+        if (ch === '"'){ inQ = false; continue; }
+        cur += ch;
+      }else{
+        if (ch === ','){ out.push(cur); cur=''; continue; }
+        if (ch === '"'){ inQ = true; continue; }
+        cur += ch;
+      }
+    }
+    out.push(cur);
+    return out;
+  }
+
+  // events
+  el('addRow').addEventListener('click', () => addRow());
+
+  projectType.addEventListener('change', () => {
+    appendAudit({ ts: nowIso(), actor: (actor.value||'').trim(), item: '(project)', field: 'type', from: state.meta.type, to: projectType.value });
+    render();
+  });
+
+  actor.addEventListener('change', () => {
+    state.meta.actor = actor.value;
+    render();
+  });
+
+  el('reset').addEventListener('click', () => {
+    if (!confirm('Reset all local data for this tracker?')) return;
+    state = { meta: { type: projectType.value, actor: actor.value }, rows: [], audit: [] };
+    save(state);
+    render();
+  });
+
+  el('exportCsv').addEventListener('click', () => {
+    const csv = rowsToCsv(state.rows);
+    download(`migration-tracker-${projectType.value}.csv`, csv, 'text/csv');
+  });
+
+  el('exportJson').addEventListener('click', () => {
+    const obj = { meta: state.meta, rows: state.rows, audit: state.audit };
+    download(`migration-tracker-${projectType.value}.json`, JSON.stringify(obj, null, 2), 'application/json');
+  });
+
+  el('importCsv').addEventListener('change', async (ev) => {
+    const file = ev.target.files?.[0];
+    if (!file) return;
+    const text = await file.text();
+    const rows = csvToRows(text);
+    state.rows = rows.concat(state.rows);
+    appendAudit({ ts: nowIso(), actor: (actor.value||'').trim(), item: '(import)', field: 'csv', from: '', to: `${rows.length} rows` });
+    ev.target.value = '';
+    render();
+  });
+
+  el('importJson').addEventListener('change', async (ev) => {
+    const file = ev.target.files?.[0];
+    if (!file) return;
+    const text = await file.text();
+    try{
+      const obj = JSON.parse(text);
+      if (Array.isArray(obj?.rows)){
+        const rows = obj.rows.map(r => ({...r, id: uid()}));
+        state.rows = rows.concat(state.rows);
+        appendAudit({ ts: nowIso(), actor: (actor.value||'').trim(), item: '(import)', field: 'json', from: '', to: `${rows.length} rows` });
+      }
+    }catch{}
+    ev.target.value = '';
+    render();
+  });
+
+  // seed with an example row on first load
+  if (state.rows.length === 0 && state.audit.length === 0){
+    addRow({ item: 'example-service', owner: '@owner', status: 'Not started', blocker: '', notes: 'Import your spreadsheet as CSV to begin.' });
+    // remove noisy create entry
+    state.audit = [];
+    save(state);
+  }
+
+  render();
+</script>
 </body>
 </html>
